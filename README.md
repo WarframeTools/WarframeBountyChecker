@@ -11,14 +11,6 @@ Long Answer is: The Scripts parse EE.log, the logfile where Warframe logs all so
 # It shows up as a Virus?!?
 Unfortunately, this is how it currently is. The source code is freely avaible here though and you can choose to check it and modify it as you please.
 
-# Why are there two versions?
-One version (with_share) sends good bounties to us. That way everyone can benefit from good bounties. The other version does not - choose whichever you like (though ofc we hope for people actively sharing their bounties). 
-
-# What does "with_share" / "no_share" mean?
-As mentioned above, there are two versions of the program. One named "with_share", one named "no_share". 
-
-The functionality of both versions is the exact same for your end. You yourself will have no advantages or disadvantages running either version.
-
 # How to get the .py working?
 Install Python 3.11 (this is what is has been tested on, may work on lower versions too). Then do `py -m pip install -r requirements.txt` in the folder.
 
