@@ -902,9 +902,13 @@ class OverlayApp:
                 continue
 
             try:
-                if "Script [Info]: EidolonJobBoard.lua: Selected job with jobInfo:" in " ".join(line_data):
+                # Only proceed if this is a bounty-related line
+                if " ".join(line_data[1:6]) == "Net [Info]: Set squad mission:":
                     try:
-                        
+                        # Check if the line contains bounty-related keywords before attempting to parse
+                        if not any(keyword in " ".join(line_data) for keyword in ["/Lotus/Types/Gameplay/Eidolon/Jobs/", "jobStages", "jobTier"]):
+                            continue
+                            
                         json_data = self.parse_squad_mission_line(line_data)
                         
                         # Store this bounty info as the last seen bounty
@@ -984,25 +988,85 @@ class OverlayApp:
 
     def parse_squad_mission_line(self, line_data):
         try:
+            # Join the line data and find the JSON portion
             data_string = " ".join(line_data[6:])
-            json_start_index = data_string.find("{")
-            json_end_index = data_string.rfind("}") + 1
             
-            # More robust error handling for JSON parsing
-            if json_start_index == -1:
-                self.logger.warning("No JSON start bracket found in squad mission line")
-                # Display "Reselect Bounty" message
-                self.update_overlay("Select Different Tier Bounty -> Reselect this Bounty ", "yellow")
-                # Try to extract information from the string without JSON parsing
-                return self.extract_mission_info_fallback(data_string)
+            # First try to find JSON-like content
+            json_start_index = data_string.find("{")
+            json_end_index = data_string.rfind("}")
+            
+            # If we can't find proper JSON brackets, try to extract information directly
+            if json_start_index == -1 or json_end_index == -1:
+                # Only log if we actually found bounty-related content
+                if any(keyword in data_string for keyword in ["/Lotus/Types/Gameplay/Eidolon/Jobs/", "jobStages", "jobTier"]):
+                    self.logger.debug("No valid JSON found in squad mission line, attempting direct extraction")
+                else:
+                    return {}
+                    
+                # Try to extract job information directly from the string
+                job_info = {}
                 
-            if json_end_index <= 0:
-                self.logger.warning("No JSON end bracket found in squad mission line")
-                # Display "Reselect Bounty" message
-                # Try to extract information from the string without JSON parsing
-                return self.extract_mission_info_fallback(data_string)
+                # Look for job path pattern
+                job_path_pattern = "/Lotus/Types/Gameplay/Eidolon/Jobs/"
+                job_start = data_string.find(job_path_pattern)
+                if job_start != -1:
+                    # Extract job identifier
+                    job_end = data_string.find(" ", job_start)
+                    if job_end == -1:
+                        job_end = len(data_string)
+                    job = data_string[job_start:job_end]
+                    job_info["job"] = job
                 
-            json_data = data_string[json_start_index:json_end_index]
+                # Look for jobStages array
+                stages_start = data_string.find("jobStages")
+                if stages_start != -1:
+                    stages_start = data_string.find("[", stages_start)
+                    if stages_start != -1:
+                        stages_end = data_string.find("]", stages_start)
+                        if stages_end != -1:
+                            stages_str = data_string[stages_start + 1:stages_end]
+                            stages = [s.strip().strip('"') for s in stages_str.split(",")]
+                            job_info["jobStages"] = stages
+                
+                # Look for jobTier
+                tier_start = data_string.find("jobTier")
+                if tier_start != -1:
+                    tier_start = data_string.find(":", tier_start)
+                    if tier_start != -1:
+                        tier_end = data_string.find(",", tier_start)
+                        if tier_end == -1:
+                            tier_end = data_string.find("}", tier_start)
+                        if tier_end != -1:
+                            tier = data_string[tier_start + 1:tier_end].strip()
+                            try:
+                                job_info["jobTier"] = int(tier)
+                            except ValueError:
+                                job_info["jobTier"] = 0
+                
+                # Look for isHardJob
+                hard_start = data_string.find("isHardJob")
+                if hard_start != -1:
+                    hard_start = data_string.find(":", hard_start)
+                    if hard_start != -1:
+                        hard_end = data_string.find(",", hard_start)
+                        if hard_end == -1:
+                            hard_end = data_string.find("}", hard_start)
+                        if hard_end != -1:
+                            is_hard = data_string[hard_start + 1:hard_end].strip().lower()
+                            job_info["isHardJob"] = is_hard == "true"
+                
+                if job_info:
+                    self.logger.debug(f"Successfully extracted job info: {job_info}")
+                    return job_info
+                
+                self.update_overlay("Select Different Tier Bounty -> Reselect this Bounty", "yellow")
+                if self.enable_tts:
+                    self.speak_text("Reselect Bounty")
+                return {}
+            
+            # If we found JSON brackets, try to parse the JSON
+            json_data = data_string[json_start_index:json_end_index + 1]
+            
             # Clean up the JSON string for parsing
             json_data = (
                 json_data.replace("null", "None")
@@ -1017,133 +1081,19 @@ class OverlayApp:
                 if isinstance(parsed_data, dict):
                     return parsed_data
                 else:
-                    self.logger.warning("Parsed JSON is not a dictionary")
-                    # Display "Reselect Bounty" message
+                    self.logger.debug("Parsed JSON is not a dictionary")
                     return {}
-            except json.JSONDecodeError:
-                self.logger.warning(f"Failed to parse JSON: {json_data}")
-                # Display "Reselect Bounty" message
-                # Try alternative method with less strict validation
-                return self.extract_mission_info_fallback(data_string)
+            except json.JSONDecodeError as e:
+                self.logger.debug(f"Failed to parse JSON: {e}")
+                # Try to extract information directly as fallback
+                return self.parse_squad_mission_line(line_data)  # Recursive call to use direct extraction
                 
         except Exception as e:
             self.logger.error(f"Error in parse_squad_mission_line: {e}")
-            # Display "Reselect Bounty" message
             self.update_overlay("Select Different Tier Bounty -> Reselect this Bounty", "yellow")
             if self.enable_tts:
                 self.speak_text("Reselect Bounty")
             return {}
-            
-    def extract_mission_info_fallback(self, data_string):
-        """Fallback method to extract mission info when JSON parsing fails"""
-        result = {}
-        
-        # Try to extract job stages with regex-like approach
-        try:
-            if "jobStages" in data_string:
-                # Find the array of stages using more reliable pattern matching
-                start_pattern = '"jobStages":['
-                end_pattern = '],'
-                
-                start_idx = data_string.find(start_pattern)
-                if start_idx != -1:
-                    start_idx += len(start_pattern)
-                    end_idx = data_string.find(end_pattern, start_idx)
-                    if end_idx != -1:
-                        stages_array = data_string[start_idx:end_idx]
-                        # Process the array string into a list
-                        stages = []
-                        # Split by commas, but only outside of quotes
-                        in_quotes = False
-                        current_item = ""
-                        for char in stages_array:
-                            if char == '"':
-                                in_quotes = not in_quotes
-                            
-                            if char == ',' and not in_quotes:
-                                clean_item = current_item.strip().strip('"\'')
-                                if clean_item:
-                                    stages.append(clean_item)
-                                current_item = ""
-                            else:
-                                current_item += char
-                                
-                        # Add the last item
-                        if current_item:
-                            clean_item = current_item.strip().strip('"\'')
-                            if clean_item:
-                                stages.append(clean_item)
-                                
-                        if stages:
-                            result["jobStages"] = stages
-        except Exception as e:
-            self.logger.error(f"Error extracting stages in fallback: {e}")
-        
-        # Try to extract job tier with more precise pattern matching
-        try:
-            if "jobTier" in data_string:
-                start_pattern = '"jobTier":'
-                start_idx = data_string.find(start_pattern)
-                if start_idx != -1:
-                    start_idx += len(start_pattern)
-                    # Find the end of the numeric value
-                    end_idx = start_idx
-                    while end_idx < len(data_string) and (data_string[end_idx].isdigit() or data_string[end_idx] == '.'):
-                        end_idx += 1
-                    
-                    if end_idx > start_idx:
-                        tier_value = data_string[start_idx:end_idx]
-                        if tier_value:
-                            result["jobTier"] = int(float(tier_value))
-        except Exception as e:
-            self.logger.error(f"Error extracting tier in fallback: {e}")
-            
-        # Try to extract job identifier with more precise pattern matching
-        try:
-            # Look for the specific job pattern
-            job_pattern = '"job":"'
-            job_idx = data_string.find(job_pattern)
-            if job_idx != -1:
-                job_idx += len(job_pattern)
-                # Find the closing quote
-                end_idx = data_string.find('"', job_idx)
-                if end_idx != -1:
-                    job_value = data_string[job_idx:end_idx]
-                    if job_value:
-                        result["job"] = job_value
-            
-            # If still no job found, try another approach
-            if "job" not in result:
-                potential_jobs = [
-                    "/Lotus/Types/Gameplay/Eidolon/Jobs/",
-                    "/Lotus/Types/Gameplay/Venus/Jobs/",
-                    "/Lotus/Types/Gameplay/Grineer/Jobs/"
-                ]
-                
-                for potential_job in potential_jobs:
-                    job_idx = data_string.find(potential_job)
-                    if job_idx != -1:
-                        # Find the end of this path (usually at a quote or comma)
-                        end_idx = data_string.find('"', job_idx)
-                        if end_idx == -1:
-                            end_idx = data_string.find(',', job_idx)
-                        
-                        if end_idx != -1:
-                            job_value = data_string[job_idx:end_idx]
-                            if job_value and len(job_value) > 10:  # Avoid very short fragments
-                                result["job"] = job_value
-                                break
-        except Exception as e:
-            self.logger.error(f"Error extracting job in fallback: {e}")
-            
-        # Check for Steel Path
-        try:
-            result["isHardJob"] = "True" if "isHardJob" in data_string and "true" in data_string.lower() else "False"
-        except Exception:
-            pass
-            
-        self.logger.info(f"Fallback parsing result: {result}")
-        return result
 
     def update_state_with_completed_bounties(self, completed_bounties):
         self.completed_bounties = completed_bounties
