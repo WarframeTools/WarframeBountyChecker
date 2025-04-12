@@ -12,7 +12,7 @@ Long Answer is: The Scripts parse EE.log, the logfile where Warframe logs all so
 Unfortunately, this is how it currently is. The source code is freely avaible here though and you can choose to check it and modify it as you please.
 
 # How to get the .py working?
-Install Python 3.11 (this is what is has been tested on, may work on lower versions too). Then do `py -m pip install -r requirements.txt` in the folder.
+Install Python 3.12 (this is what is has been tested on, may work on lower versions too). Then do `py -m pip install -r requirements.txt` in the folder.
 
 # Will this get updates?
 Yes

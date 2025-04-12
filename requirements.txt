@@ -1,11 +1,9 @@
-certifi==2024.12.14
-cffi==1.17.1
+certifi==2025.1.31
 charset-normalizer==3.4.1
-comtypes==1.4.9
+comtypes==1.4.10
 idna==3.10
-pycparser==2.22
 pypiwin32==223
-pyttsx3==2.98
-pywin32==308
-requests==2.32.3
+pyttsx3==2.90
+pywin32==310
+requests==2.31.0
 urllib3==2.3.0
