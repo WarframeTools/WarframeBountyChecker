@@ -1,3 +1,6 @@
+# DE have removed the ability to retrieve bounty stages. Therefore this no longer works.
+
+
 # BountyChecker
 A tool to check Cetus Bounties in Real Time
 
